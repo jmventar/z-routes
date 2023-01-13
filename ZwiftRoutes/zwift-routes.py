@@ -65,10 +65,20 @@ def insert_routes(table_name):
 
     db_worlds = session.query(World).all()
 
+    raw_count = session.execute(text(f"SELECT COUNT(1) FROM {table_name}")).scalar()
+    routes_count = session.query(Route).count()
+    skip_count: int = 0
+
+    print(f"Found {raw_count} entries in {table_name}, current existing Routes in DB: {routes_count}")
+
     # find raw data and insert into routes
     result = session.execute(text(f"SELECT * FROM {table_name}"))
     for row in result:
-        session.add(Route(
+        if session.query(Route.name == row.Route).first():
+            skip_count += 1
+            continue
+
+        session.merge(Route(
             name=row.Route,
             map=row.Map,
             map_id=[x.id for x in db_worlds if x.name == row.Map],
@@ -78,6 +88,8 @@ def insert_routes(table_name):
             restriction=row.Restriction
         ))
     session.commit()
+
+    print(f"From {raw_count} entries in {table_name}, skipped {skip_count}. Routes in DB: {routes_count}")
 
 
 def main():
@@ -104,7 +116,7 @@ def main():
         title = i.text.strip()
         headers.append(title)
 
-        df = DataFrame(columns=headers)
+    df = DataFrame(columns=headers)
 
     # Retrieve all table values
     for j in table_data.find_all('tr')[1:]:
