@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from pandas import DataFrame
 from requests import get
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy_utils import database_exists
 
 from model.base import engine, Base, session_factory
@@ -45,19 +46,22 @@ def insert_worlds(table_name):
     # retrieve a session
     session = session_factory()
 
-    if session.query(World).first():
-        print("there are already some worlds, skip...")
-        return
+    # if session.query(World).first():
+    #     print("there are already some worlds, skip...")
+    #     return
 
     # execute in same transaction
     result = session.execute(text(f"SELECT DISTINCT(Map) FROM {table_name}"))
     for row in result:
-        # create new object and add to table
-        session.add(World(name=row.Map))
+        q = session.query(World)
+        q = q.filter(World.name == row.Map)
+        try:
+            q.one()
+        except SQLAlchemyError as e:
+            session.add(World(name=row.Map))
 
     session.commit()
-    print(f"Inserted {result.rowcount} worlds")
-    # session.close()
+    print(f"DB contains {result.rowcount} worlds")
 
 
 def insert_routes(table_name):
@@ -67,29 +71,46 @@ def insert_routes(table_name):
 
     raw_count = session.execute(text(f"SELECT COUNT(1) FROM {table_name}")).scalar()
     routes_count = session.query(Route).count()
-    skip_count: int = 0
+    update_count: int = 0
+    insert_count: int = 0
 
     print(f"Found {raw_count} entries in {table_name}, current existing Routes in DB: {routes_count}")
 
     # find raw data and insert into routes
     result = session.execute(text(f"SELECT * FROM {table_name}"))
     for row in result:
-        if session.query(Route.name == row.Route).first():
-            skip_count += 1
-            continue
+        q = session.query(Route)
+        q = q.filter(Route.name == row.Route)
+        try:
+            record = q.one_or_none()
+            if record:
+                # TODO Try to avoid update if record fields are the same
+                record.name = row.Route
+                record.map = row.Map
+                record.map_id = [x.id for x in db_worlds if x.name == row.Map]
+                record.length = clean_float(row.Length)
+                record.elevation = clean_float(row.Elevation)
+                record.lead_in = clean_float(row["Lead-In"])
+                record.restriction = row.Restriction
+                update_count += 1
+            else:
+                session.add(Route(
+                    name=row.Route,
+                    map=row.Map,
+                    map_id=[x.id for x in db_worlds if x.name == row.Map],
+                    length=clean_float(row.Length),
+                    elevation=clean_float(row.Elevation),
+                    lead_in=clean_float(row["Lead-In"]),
+                    restriction=row.Restriction
+                ))
+                insert_count += 1
+        except SQLAlchemyError as e:
+            print(e)
 
-        session.merge(Route(
-            name=row.Route,
-            map=row.Map,
-            map_id=[x.id for x in db_worlds if x.name == row.Map],
-            length=clean_float(row.Length),
-            elevation=clean_float(row.Elevation),
-            lead_in=clean_float(row["Lead-In"]),
-            restriction=row.Restriction
-        ))
-    session.commit()
+        session.commit()
 
-    print(f"From {raw_count} entries in {table_name}, skipped {skip_count}. Routes in DB: {routes_count}")
+    print(f"From {raw_count} entries in {table_name}, inserted: {insert_count}, updated: {update_count} routes in "
+          f"DB {routes_count}")
 
 
 def main():
