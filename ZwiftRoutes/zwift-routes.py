@@ -5,7 +5,7 @@ from pandas import DataFrame
 from requests import get
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy_utils import database_exists
+from sqlalchemy_utils import database_exists, create_database
 
 from model.base import engine, Base, session_factory
 from model.route import Route
@@ -38,7 +38,7 @@ def store_dataframe(df, table_name):
 def prepare_orm_database():
     # Create DB if not exists
     if not database_exists(engine.url):
-        # create_database(engine.url)
+        create_database(engine.url)
         Base.metadata.create_all(engine)
 
 
@@ -80,28 +80,28 @@ def insert_routes(table_name):
     result = session.execute(text(f"SELECT * FROM {table_name}"))
     for row in result:
         q = session.query(Route)
-        q = q.filter(Route.name == row.Route)
+        q = q.filter(Route.name == row.route)
         try:
             record = q.one_or_none()
             if record:
                 # TODO Try to avoid update if record fields are the same
-                record.name = row.Route
-                record.map = row.Map
-                record.map_id = [x.id for x in db_worlds if x.name == row.Map]
-                record.length = clean_float(row.Length)
-                record.elevation = clean_float(row.Elevation)
-                record.lead_in = clean_float(row["Lead-In"])
-                record.restriction = row.Restriction
+                record.name = row.route
+                record.map = row.map
+                record.map_id = [x.id for x in db_worlds if x.name == row.map]
+                record.length = clean_float(row.length)
+                record.elevation = clean_float(row.elevation)
+                record.lead_in = clean_float(row.lead_in)
+                record.restriction = row.restriction
                 update_count += 1
             else:
                 session.add(Route(
-                    name=row.Route,
-                    map=row.Map,
-                    map_id=[x.id for x in db_worlds if x.name == row.Map],
-                    length=clean_float(row.Length),
-                    elevation=clean_float(row.Elevation),
-                    lead_in=clean_float(row["Lead-In"]),
-                    restriction=row.Restriction
+                    name=row.route,
+                    map=row.map,
+                    map_id=[x.id for x in db_worlds if x.name == row.map],
+                    length=clean_float(row.length),
+                    elevation=clean_float(row.elevation),
+                    lead_in=clean_float(row.lead_in),
+                    restriction=row.restriction
                 ))
                 insert_count += 1
         except SQLAlchemyError as e:
@@ -134,7 +134,7 @@ def main():
 
     # Retrieve all table headers
     for i in table_data.find_all('th'):
-        title = i.text.strip()
+        title = i.text.strip().replace("-","_").lower()
         headers.append(title)
 
     df = DataFrame(columns=headers)
