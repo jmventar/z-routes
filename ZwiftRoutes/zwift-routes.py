@@ -12,8 +12,6 @@ from model.route import Route
 from model.utils.utils import clean_float
 from model.world import World
 
-SOURCES = "./route_sources.txt"
-
 
 # Store given dataframe into DB
 def store_dataframe(df, table_name):
@@ -46,10 +44,6 @@ def insert_worlds(table_name):
     # retrieve a session
     session = session_factory()
 
-    # if session.query(World).first():
-    #     print("there are already some worlds, skip...")
-    #     return
-
     # execute in same transaction
     result = session.execute(text(f"SELECT DISTINCT(Map) FROM {table_name}"))
     for row in result:
@@ -58,6 +52,7 @@ def insert_worlds(table_name):
         try:
             q.one()
         except SQLAlchemyError as e:
+            print(f"world not found, add {row.Map}")
             session.add(World(name=row.Map))
 
     session.commit()
@@ -114,11 +109,8 @@ def insert_routes(table_name):
 
 
 def main():
-    links = []
-
-    with open(SOURCES) as file:
-        for line in file:
-            links.append(line)
+    links = ["https://zwiftinsider.com/routes/",
+             "https://zwifthacks.com/app/routes/"]
 
     # Currently only use first one
     page = get(links[0])
@@ -134,7 +126,7 @@ def main():
 
     # Retrieve all table headers
     for i in table_data.find_all('th'):
-        title = i.text.strip().replace("-","_").lower()
+        title = i.text.strip().replace("-", "_").lower()
         headers.append(title)
 
     df = DataFrame(columns=headers)
@@ -153,11 +145,6 @@ def main():
 
     # store raw
     store_dataframe(df, raw_table)
-
-    # Working with DB NO ORM
-    # prepare_metadata()
-    # insert_worlds_metadata(raw_table)
-    # insert_routes_metadata(raw_table)
 
     insert_worlds(raw_table)
     insert_routes(raw_table)
